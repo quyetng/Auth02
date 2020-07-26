@@ -6,6 +6,7 @@ const port = process.env.PORT
 const mongoose = require('mongoose')
 const encrypt = require('mongoose-encryption')
 const secret = process.env.SECRET
+const md5 = require('md5')
 
 
 mongoose.connect('mongodb://localhost/auth', {useNewUrlParser: true})
@@ -24,7 +25,7 @@ const personSchema = new mongoose.Schema({
 
 })
 
-personSchema.plugin(encrypt, {secret: secret, encryptedFields: ['password']})
+//personSchema.plugin(encrypt, {secret: secret, encryptedFields: ['password']})
 // create model
 
 const Person = mongoose.model('Person', personSchema);
@@ -50,7 +51,7 @@ app.get("/register", (req, res) => {
 app.post("/register", (req, res) => {
   console.log(req.body);
   const email = req.body.email
-  const password = req.body.password
+  const password = md5(req.body.password)
 
   const newUser = new Person({email: email, password: password})
   Person.findOne({email: email}, (err, foundUser) => {
@@ -77,7 +78,7 @@ app.post("/register", (req, res) => {
 app.post("/login", (req, res) => {
   console.log(req.body);
   const email = req.body.email
-  const password = req.body.password
+  const password = md5(req.body.password)
 
   Person.findOne({email: email}, (err, foundUser) => {
     if (err) {
