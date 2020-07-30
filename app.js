@@ -1,18 +1,19 @@
 require('dotenv').config()
 const express = require('express')
 const bodyParser = require('body-parser')
-const app = express()
 const port = process.env.PORT
 const mongoose = require('mongoose')
-const encrypt = require('mongoose-encryption')
-const secret = process.env.SECRET
-const md5 = require('md5')
-const bcrypt = require('bcrypt')
-const saltRounds = 10
 const session = require('express-session')
-const passportLocalMongoose = require('passport-local-mongoose')
 const passport = require('passport')
-//const LocalStrategy = require('passport-local').LocalStrategy
+const passportLocalMongoose = require('passport-local-mongoose')
+
+const app = express()
+//const LocalStrategy = require('passport-local').Strategy
+app.use(bodyParser.urlencoded({
+  extended: true
+}))
+app.set('view engine', 'ejs')
+app.use(express.static(__dirname + "/public"))
 
 
 app.use(session({
@@ -26,29 +27,17 @@ app.use(session({
 app.use(passport.initialize());
 app.use(passport.session())
 
-mongoose.connect('mongodb://localhost/auth', {useNewUrlParser: true, useUnifiedTopology: true,useCreateIndex: true})
-// create Schema
-// const personSchema = new mongoose.Schema({
-//   username: {
-//     type: String,
-//     required: [true, "missing username"]
-//   },
-//   email: {
-//     type: String,
-//     required: [true, "missing email"]
-//   },
-//   password: {
-//     type: String,
-//     required: [true, "missing password"]
-//   }
-//
-// })
+mongoose.connect('mongodb://localhost/auth', {
+  useNewUrlParser: true,
+  useUnifiedTopology: true,
+  useCreateIndex: true
+})
 
 const personSchema = new mongoose.Schema({
-  username: {
-    type: String,
-    required: [true, "missing username"]
-  },
+  // username: {
+  //   type: String,
+  //   required: [true, "missing username"]
+  // },
   email: {
     type: String
     //required: [true, "missing email"]
@@ -66,21 +55,24 @@ personSchema.plugin(passportLocalMongoose)
 //personSchema.plugin(encrypt, {secret: secret, encryptedFields: ['password']})
 // create model
 
-const Person = mongoose.model('Person', personSchema);
+const User = mongoose.model('User', personSchema);
 
-passport.use(Person.createStrategy())
+//passport.use(new LocalStrategy(User.authenticate()));
+passport.use(User.createStrategy())
 
-passport.serializeUser(Person.serializeUser())
-passport.deserializeUser(Person.deserializeUser())
 
-app.use(express.urlencoded({extended: true}))
-app.set('view engine', 'ejs')
-app.use(express.static(__dirname + "/public"))
+passport.serializeUser(User.serializeUser())
+passport.deserializeUser(User.deserializeUser())
 
 app.get("/", (req, res) => {
+  res.render("index")
+})
+
+app.get("/important", (req, res) => {
   console.log(req);
   if (req.isAuthenticated()) {
-    res.render("index")
+    console.log("Did authenticate");
+    res.render("important")
   } else {
     res.redirect("/login")
   }
@@ -88,133 +80,65 @@ app.get("/", (req, res) => {
 })
 
 app.get("/login", (req, res) => {
-  res.render('login', {title: "Login"})
+  res.render('login', {
+    title: "Login"
+  })
 })
 
 app.get("/register", (req, res) => {
-  res.render("register", {title: "Register"})
+  res.render("register", {
+    title: "Register"
+  })
 
 })
 
-app.post("/register", (req, res) => {
+app.post("/register", function(req, res, next){
   console.log(req.body);
-  const email = req.body.email
+  const email = req.body.username
   const password = req.body.password
 
-  console.log("before Person.register");
-  Person.register({username: email, email: email, active: false}, password, (err, user) => {
-    console.log("inside Person.register");
+  console.log("before User.register");
+  User.register({username: req.body.username}, req.body.password, function(err, user){
     if (err) {
       console.log(err);
-      console.log("Cannot register");
+      res.redirect("/register");
     } else {
-      console.log("Registerd successful");
-      // let local cookies know you are alreading authenticated
-      // passport.authenticate('local'), function(req, res) {
-      //   res.redirect('/')
-      // }
-      var authenticate = Person.authenticate()
-      authenticate(email, password, (err, result) => {
-        if (err) {
-          console.log(err);
-        } else {
-          console.log(result);
-          if (result) {
-            res.redirect("/")
-          }
-        }
-      })
+      passport.authenticate("local")(req, res, function(){
+        res.redirect("/important");
+      });
 
     }
+  });
 
 
-
-  })
-
-  // Person.findOne({email: email}, (err, foundUser) => {
-  //   if (err) {
-  //     console.log(err);
-  //   } else {
-  //     if (!foundUser) {
-  //
-  //       bcrypt.genSalt(saltRounds, (err, salt) => {
-  //         bcrypt.hash(password, salt, (err, hash) => {
-  //           if (err) {
-  //             console.log(err);
-  //           } else if (hash) {
-  //             console.log(hash);
-  //             const newUser = new Person({email: email, password: hash})
-  //             newUser.save((err) => {
-  //               if (err) {
-  //                 console.log(err);
-  //               } else {
-  //                 console.log("Added successful");
-  //                 res.send("Registered successful")
-  //               }
-  //             })
-  //           }
-  //         })
-  //       })
-  //
-  //
-  //     } else {
-  //       res.send("email is existed. Please choose a different one")
-  //     }
-  //   }
-  // })
-  console.log("end of register");
 })
 
-app.post("/login", (req, res) => {
-  //console.log(req.body);
-  const email = req.body.email
-  console.log(email);
-  const password = req.body.password
-  console.log(password);
+app.post("/login", function(req, res, next){
 
-  const user = new Person({username: email, password: password})
+  const user = new User({
+    username: req.body.username,
+    password: req.body.password
+  });
 
-  //passport.authenticate('local', {successRedirect: '/', failureRedirect: '/login'})
-  req.login(user, (err) => {
+  req.login(user, function(err){
     if (err) {
       console.log(err);
-      console.log("Something wrong");
     } else {
-      // request authentication, so can save cookie infor
-      // passport.authenticate('local')(req, res, function(){
-      //   res.redirect("/")
-      // })
-      passport.authenticate('local'), function(req, res) {
-        res.redirect("/")
-      }
-      // passport.authenticate('local')(req, res, function(){
-      //   res.redirect("/")
-      // })
 
-      //passport.authenticate('local', {successRedirect: '/', failureRedirect: '/login'})
-
+      passport.authenticate("local")(req, res, function(){
+        res.redirect("/important");
+      });
     }
-  })
+  });
 
-  console.log("end of login");
-  // Person.findOne({email: email}, (err, foundUser) => {
-  //   if (err) {
-  //     console.log(err);
-  //   } else {
-  //     if (foundUser) {
-  //       bcrypt.compare(password, foundUser.password, (err, result) => {
-  //         console.log(foundUser.password);
-  //         if (result) {
-  //           res.render('index')
-  //         } else {
-  //           res.send("User is not found")
-  //         }
-  //       })
-  //
-  //     }
-  //   }
-  // })
-})
+});
+
+
+
+app.get('/logout', function(req, res){
+  req.logout();
+  res.redirect('/');
+});
 
 app.listen(port, (err) => {
   console.log("Server is running on port " + port);
